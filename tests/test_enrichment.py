@@ -308,12 +308,12 @@ class TestEnrichProduct:
 
 
 # =============================================================================
-# TESTS: ProductEnricher.save_to_bigquery()
+# TESTS: ProductEnricher._flush_to_bigquery()
 # =============================================================================
 
 
-class TestSaveToBigQuery:
-    """Valida la escritura batch a BigQuery."""
+class TestFlushToBigQuery:
+    """Valida la escritura de batches a BigQuery."""
 
     def test_successful_insert(self):
         """insert_rows_json sin errores → no lanza excepción."""
@@ -327,7 +327,7 @@ class TestSaveToBigQuery:
             mock_bq_class.return_value = mock_bq
 
             enricher = ProductEnricher()
-            results = [
+            batch = [
                 {
                     "product_id": "RSP-001",
                     "category": "Herramientas",
@@ -337,7 +337,7 @@ class TestSaveToBigQuery:
                     "enriched_at": "2026-04-23T21:00:00+00:00",
                 }
             ]
-            enricher.save_to_bigquery(results)
+            enricher._flush_to_bigquery(batch)
             mock_bq.insert_rows_json.assert_called_once()
 
     def test_insert_errors_raise_runtime(self):
@@ -355,7 +355,21 @@ class TestSaveToBigQuery:
 
             enricher = ProductEnricher()
             with pytest.raises(RuntimeError, match="BigQuery streaming insert falló"):
-                enricher.save_to_bigquery([{"product_id": "RSP-001"}])
+                enricher._flush_to_bigquery([{"product_id": "RSP-001"}])
+
+    def test_empty_batch_skipped(self):
+        """Batch vacío → no llama a insert_rows_json."""
+        with (
+            patch("enrich.GCP_PROJECT", "test-project"),
+            patch("enrich.genai.Client"),
+            patch("enrich.bigquery.Client") as mock_bq_class,
+        ):
+            mock_bq = MagicMock()
+            mock_bq_class.return_value = mock_bq
+
+            enricher = ProductEnricher()
+            enricher._flush_to_bigquery([])
+            mock_bq.insert_rows_json.assert_not_called()
 
 
 # =============================================================================
