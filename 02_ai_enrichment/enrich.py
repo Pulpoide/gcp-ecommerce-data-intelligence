@@ -51,9 +51,9 @@ DATASET_NAME = os.environ.get("DATASET_NAME", "dropshipping")
 
 # Modelo y parámetros de concurrencia.
 MODEL = "gemini-2.0-flash"
-MAX_CONCURRENT = 5
+MAX_CONCURRENT = 1
 MAX_RETRIES = 3
-BASE_DELAY_SECONDS = 2  # Backoff exponencial: 2s → 4s → 8s.
+BASE_DELAY_SECONDS = 4  # Backoff exponencial: 2s → 4s → 8s.
 
 # Categorías válidas para Resparked.
 VALID_CATEGORIES = ["Herramientas", "Insumos", "Accesorios", "Materiales", "Kits"]
