@@ -12,12 +12,14 @@ El procesamiento es INCREMENTAL: solo enriquece productos que no
 tienen entrada en enriched_products (LEFT JOIN + IS NULL).
 
 Variables de entorno requeridas:
-  - GEMINI_API_KEY: API key de Google AI Studio para Gemini.
   - GCP_PROJECT:    ID del proyecto de GCP.
   - DATASET_NAME:   Nombre del dataset de BigQuery (default: dropshipping).
 
+Prerequisitos:
+  - API de Vertex AI habilitada: gcloud services enable aiplatform.googleapis.com
+  - Autenticación via ADC (Application Default Credentials).
+
 Uso:
-  export GEMINI_API_KEY=tu-api-key
   export GCP_PROJECT=tu-proyecto
   python enrich.py
 """
@@ -45,12 +47,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GCP_PROJECT = os.environ.get("GCP_PROJECT", "")
 DATASET_NAME = os.environ.get("DATASET_NAME", "dropshipping")
+REGION = os.environ.get("REGION", "us-central1")
 
 # Modelo y parámetros de concurrencia.
-MODEL = "gemini-2.0-flash"
+# gemini-2.0-flash-001: versión estable de Flash en Vertex AI.
+MODEL = "gemini-2.0-flash-001"
 MAX_CONCURRENT = 1
 MAX_RETRIES = 3
 BASE_DELAY_SECONDS = 4  # Backoff exponencial: 2s → 4s → 8s.
@@ -123,18 +126,19 @@ class ProductEnricher:
     """
 
     def __init__(self) -> None:
-        if not GEMINI_API_KEY:
-            raise ValueError(
-                "GEMINI_API_KEY no está configurada. "
-                "Exportala con: export GEMINI_API_KEY=tu-api-key"
-            )
         if not GCP_PROJECT:
             raise ValueError(
                 "GCP_PROJECT no está configurado. "
                 "Exportalo con: export GCP_PROJECT=tu-proyecto"
             )
 
-        self.genai_client = genai.Client(api_key=GEMINI_API_KEY)
+        # Vertex AI usa ADC (Application Default Credentials) en vez de API key.
+        # En Cloud Shell las credenciales ya están disponibles automáticamente.
+        self.genai_client = genai.Client(
+            vertexai=True,
+            project=GCP_PROJECT,
+            location=REGION,
+        )
         self.bq_client = bigquery.Client(project=GCP_PROJECT)
         self.semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
