@@ -50,7 +50,7 @@ GCP_PROJECT = os.environ.get("GCP_PROJECT", "")
 DATASET_NAME = os.environ.get("DATASET_NAME", "dropshipping")
 
 # Modelo y parámetros de concurrencia.
-MODEL = "gemini-1.5-flash"
+MODEL = "gemini-2.0-flash"
 MAX_CONCURRENT = 5
 MAX_RETRIES = 3
 BASE_DELAY_SECONDS = 2  # Backoff exponencial: 2s → 4s → 8s.
