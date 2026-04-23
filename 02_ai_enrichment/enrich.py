@@ -52,8 +52,8 @@ DATASET_NAME = os.environ.get("DATASET_NAME", "dropshipping")
 REGION = os.environ.get("REGION", "us-central1")
 
 # Modelo y parámetros de concurrencia.
-# gemini-2.0-flash-001: versión estable de Flash en Vertex AI.
-MODEL = "gemini-2.0-flash-001"
+# gemini-2.5-flash: versión estable de Flash en Vertex AI.
+MODEL = "gemini-2.5-flash"
 MAX_CONCURRENT = 1
 MAX_RETRIES = 3
 BASE_DELAY_SECONDS = 4  # Backoff exponencial: 2s → 4s → 8s.
