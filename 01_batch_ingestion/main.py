@@ -339,14 +339,19 @@ def process_csv(cloud_event: CloudEvent) -> None:
         return
 
     # --- Preparar datos para BigQuery ---
-    # Agregamos ingested_at con el timestamp actual en UTC.
-    df_valid["ingested_at"] = datetime.now(timezone.utc).isoformat()
+    # Agregamos ingested_at como objeto datetime (NO string).
+    # pyarrow requiere datetime para mapear al tipo TIMESTAMP de BigQuery.
+    # .isoformat() devuelve str → ArrowTypeError en conversión.
+    df_valid["ingested_at"] = datetime.now(timezone.utc)
 
     # Casteamos tipos para que coincidan con el schema de BQ.
-    # price y stock ya fueron validados, pero necesitamos el tipo correcto.
+    # price: float64 nativo de pandas → FLOAT en BQ, sin problemas.
+    # stock: pd.Int64Dtype() es nullable integer (soporta NaN) → INTEGER en BQ.
+    # NOTA: downcast="integer" está deprecated en pandas 2.x y NO garantiza
+    # el dtype — usamos astype("Int64") para un cast explícito y seguro.
     df_valid["price"] = pd.to_numeric(df_valid["price"], errors="coerce")
-    df_valid["stock"] = pd.to_numeric(
-        df_valid["stock"], errors="coerce", downcast="integer"
+    df_valid["stock"] = pd.to_numeric(df_valid["stock"], errors="coerce").astype(
+        "Int64"
     )
 
     # Seleccionamos solo las columnas que van a BQ (en el orden del schema).
