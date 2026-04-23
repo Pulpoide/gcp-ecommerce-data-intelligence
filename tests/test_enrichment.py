@@ -12,10 +12,10 @@ Qué se testea:
   - Orquestación completa del run().
 
 NOTA sobre mocks de env vars:
-  Las variables GCP_PROJECT, GEMINI_API_KEY, etc. se leen como constantes
-  a nivel de módulo en enrich.py. Para que los tests las overriteen
-  correctamente, se patchean las constantes del módulo directamente
-  (patch("enrich.GEMINI_API_KEY", ...)) en vez de os.environ.
+  Las variables GCP_PROJECT, etc. se leen como constantes a nivel de módulo
+  en enrich.py. Para que los tests las overriteen correctamente, se patchean
+  las constantes del módulo directamente (patch("enrich.GCP_PROJECT", ...))
+  en vez de os.environ.
 """
 
 import asyncio
@@ -97,7 +97,6 @@ def sample_dataframe():
 def _env_patches():
     """Retorna los patches necesarios para instanciar ProductEnricher en tests."""
     return [
-        patch("enrich.GEMINI_API_KEY", "fake-key"),
         patch("enrich.GCP_PROJECT", "test-project"),
         patch("enrich.genai.Client"),
         patch("enrich.bigquery.Client"),
@@ -193,7 +192,6 @@ class TestGetPendingProducts:
     def test_returns_dataframe_from_query(self, sample_dataframe):
         """Debe ejecutar la query y retornar un DataFrame."""
         with (
-            patch("enrich.GEMINI_API_KEY", "fake-key"),
             patch("enrich.GCP_PROJECT", "test-project"),
             patch("enrich.genai.Client"),
             patch("enrich.bigquery.Client") as mock_bq_class,
@@ -216,7 +214,6 @@ class TestGetPendingProducts:
     def test_returns_empty_when_all_enriched(self):
         """Si todos los productos ya fueron enriquecidos, retorna DF vacío."""
         with (
-            patch("enrich.GEMINI_API_KEY", "fake-key"),
             patch("enrich.GCP_PROJECT", "test-project"),
             patch("enrich.genai.Client"),
             patch("enrich.bigquery.Client") as mock_bq_class,
@@ -241,7 +238,6 @@ class TestEnrichProduct:
     def test_happy_path(self, sample_row, sample_enrichment):
         """Gemini responde bien → retorna dict con todos los campos."""
         with (
-            patch("enrich.GEMINI_API_KEY", "fake-key"),
             patch("enrich.GCP_PROJECT", "test-project"),
             patch("enrich.genai.Client") as mock_genai_class,
             patch("enrich.bigquery.Client"),
@@ -268,7 +264,6 @@ class TestEnrichProduct:
     def test_retry_then_success(self, sample_row, sample_enrichment):
         """Falla 2 veces, funciona la 3ra → retorna resultado válido."""
         with (
-            patch("enrich.GEMINI_API_KEY", "fake-key"),
             patch("enrich.GCP_PROJECT", "test-project"),
             patch("enrich.genai.Client") as mock_genai_class,
             patch("enrich.bigquery.Client"),
@@ -296,7 +291,6 @@ class TestEnrichProduct:
     def test_all_retries_fail_returns_none(self, sample_row):
         """Los 3 intentos fallan → retorna None sin crashear."""
         with (
-            patch("enrich.GEMINI_API_KEY", "fake-key"),
             patch("enrich.GCP_PROJECT", "test-project"),
             patch("enrich.genai.Client") as mock_genai_class,
             patch("enrich.bigquery.Client"),
@@ -324,7 +318,6 @@ class TestSaveToBigQuery:
     def test_successful_insert(self):
         """insert_rows_json sin errores → no lanza excepción."""
         with (
-            patch("enrich.GEMINI_API_KEY", "fake-key"),
             patch("enrich.GCP_PROJECT", "test-project"),
             patch("enrich.genai.Client"),
             patch("enrich.bigquery.Client") as mock_bq_class,
@@ -350,7 +343,6 @@ class TestSaveToBigQuery:
     def test_insert_errors_raise_runtime(self):
         """BigQuery reporta errores → lanza RuntimeError."""
         with (
-            patch("enrich.GEMINI_API_KEY", "fake-key"),
             patch("enrich.GCP_PROJECT", "test-project"),
             patch("enrich.genai.Client"),
             patch("enrich.bigquery.Client") as mock_bq_class,
@@ -377,7 +369,6 @@ class TestRun:
     def test_skips_when_no_pending(self):
         """Si no hay productos pendientes, no llama a Gemini ni a BQ insert."""
         with (
-            patch("enrich.GEMINI_API_KEY", "fake-key"),
             patch("enrich.GCP_PROJECT", "test-project"),
             patch("enrich.genai.Client"),
             patch("enrich.bigquery.Client") as mock_bq_class,
@@ -393,7 +384,6 @@ class TestRun:
     def test_full_flow_with_mixed_results(self, sample_dataframe):
         """3 productos: 2 exitosos, 1 falla → solo 2 se guardan en BQ."""
         with (
-            patch("enrich.GEMINI_API_KEY", "fake-key"),
             patch("enrich.GCP_PROJECT", "test-project"),
             patch("enrich.genai.Client") as mock_genai_class,
             patch("enrich.bigquery.Client") as mock_bq_class,
@@ -441,19 +431,9 @@ class TestRun:
 class TestEnvValidation:
     """Verifica que el constructor falle sin variables de entorno."""
 
-    def test_missing_api_key_raises(self):
-        """Sin GEMINI_API_KEY → ValueError."""
-        with (
-            patch("enrich.GEMINI_API_KEY", ""),
-            patch("enrich.GCP_PROJECT", "test-project"),
-        ):
-            with pytest.raises(ValueError, match="GEMINI_API_KEY"):
-                ProductEnricher()
-
     def test_missing_project_raises(self):
         """Sin GCP_PROJECT → ValueError."""
         with (
-            patch("enrich.GEMINI_API_KEY", "fake-key"),
             patch("enrich.GCP_PROJECT", ""),
             patch("enrich.genai.Client"),
         ):
