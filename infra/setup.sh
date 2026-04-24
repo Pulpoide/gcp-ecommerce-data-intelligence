@@ -218,6 +218,19 @@ cat > "${SCHEMA_DIR}/enriched_schema.json" <<'SCHEMA_ENRICHED'
 ]
 SCHEMA_ENRICHED
 
+# Schema para price_history.
+# Almacena el histórico de cambios de precio detectados por el simulador
+# de monitoreo (módulo 03). Cada fila es un evento de cambio de precio.
+cat > "${SCHEMA_DIR}/price_history_schema.json" <<'SCHEMA_PRICE_HISTORY'
+[
+    {"name": "product_id",      "type": "STRING",    "mode": "REQUIRED",  "description": "FK al producto en final_products"},
+    {"name": "old_price",       "type": "FLOAT",     "mode": "NULLABLE",  "description": "Precio anterior del producto"},
+    {"name": "new_price",       "type": "FLOAT",     "mode": "NULLABLE",  "description": "Precio nuevo del producto"},
+    {"name": "change_percent",  "type": "FLOAT",     "mode": "NULLABLE",  "description": "Porcentaje de cambio del precio"},
+    {"name": "updated_at",      "type": "TIMESTAMP", "mode": "NULLABLE",  "description": "Fecha y hora de la actualización"}
+]
+SCHEMA_PRICE_HISTORY
+
 log_success "Archivos de schema generados en ${SCHEMA_DIR}"
 
 # ---- 3.3: Crear tablas ----
@@ -264,6 +277,14 @@ create_bq_table \
     "${SCHEMA_DIR}/enriched_schema.json" \
     "Productos enriquecidos — categorización AI con Gemini"
 
+# price_history: Histórico de cambios de precio del módulo 03.
+# Cada fila representa un evento de cambio de precio detectado por el simulador
+# y persistido por la Cloud Function suscrita al tópico price-updates.
+create_bq_table \
+    "price_history" \
+    "${SCHEMA_DIR}/price_history_schema.json" \
+    "Histórico de precios — monitoreo en tiempo real"
+
 # ---- 3.4: Limpiar schemas temporales ----
 # Borramos los archivos JSON temporales que ya cumplieron su propósito.
 # No queremos que queden en el repo (además, el .gitignore ya excluye *.json).
@@ -303,6 +324,7 @@ echo "  📊 BigQuery:"
 echo "     └── ${DATASET_NAME}.staging_products"
 echo "     └── ${DATASET_NAME}.final_products"
 echo "     └── ${DATASET_NAME}.enriched_products"
+echo "     └── ${DATASET_NAME}.price_history"
 echo "  📨 Pub/Sub:"
 echo "     └── ${PUBSUB_TOPIC}"
 echo ""
