@@ -106,20 +106,48 @@ gsutil cp data/products_load.csv gs://${PROJECT_ID}-raw-products/
 
 ## Module 02 — AI Enrichment
 
-*(In progress)*
+Reads product `name` and `description` from `final_products`, sends 
+them to Gemini 2.5 Flash via Vertex AI, and writes structured 
+enrichment data to `enriched_products`.
 
-Reads product `name` and `description` from `final_products`, sends them to Gemini 1.5 Flash, and writes structured enrichment data to `enriched_products`.
+**Processing architecture:**
+- Synchronous loop with `time.sleep(4)` between requests to respect 
+  Vertex AI rate limits
+- Pydantic schema validation on every Gemini response before writing 
+  to BigQuery — malformed responses fail fast instead of corrupting 
+  the table
+- Incremental by design: LEFT JOIN against `enriched_products` ensures 
+  already-processed products are never sent to Gemini again
+- Batch insert: results accumulate in a buffer and flush to BigQuery 
+  every 10 products, not one-by-one
 
-Expected output schema per product:
+**Results on Resparked dataset (39 products):**
+- ✅ 39/39 products enriched successfully
+- ⏱ ~200 seconds total processing time
+- 📊 Average confidence score: 0.97
+- Categories identified: Herramientas, Insumos, Accesorios, 
+  Materiales, Kits
+
+**Enriched schema written to BigQuery:**
 ```json
 {
-  "product_id": "RSP-001",
+  "product_id": "RSP-002",
   "category": "Herramientas",
-  "subcategory": "Bolígrafos de Grabado",
-  "tags": ["cuero", "tungsteno", "profesional"],
-  "confidence_score": 0.94,
-  "enriched_at": "2026-04-23T21:00:00Z"
+  "subcategory": "Herramienta de grabado",
+  "tags": ["grabador", "bolígrafo-eléctrico", "oro-rosa", 
+           "grip-silicona", "precisión", "customizer-pen"],
+  "confidence_score": 0.98,
+  "enriched_at": "2026-04-24T00:30:00Z"
 }
+```
+
+![Enriched products in BigQuery](docs/enriched_products_preview.png)
+
+```bash
+# Run enrichment (incremental — skips already-processed products)
+export GCP_PROJECT=your-project-id
+export DATASET_NAME=dropshipping
+python 02_ai_enrichment/enrich.py
 ```
 
 ---
