@@ -45,7 +45,7 @@ graph TD
 | Data Warehouse | BigQuery |
 | Compute | Cloud Functions Gen2 |
 | Messaging | Pub/Sub |
-| AI / LLM | Gemini 1.5 Flash via `google-generativeai` |
+| AI / LLM | Gemini 2.5 Flash via `google-generativeai` |
 | Orchestration | Eventarc (GCS trigger) |
 | Visualization | Looker Studio |
 | Language | Python 3.10+ |
