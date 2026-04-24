@@ -18,9 +18,8 @@ NOTA sobre mocks de env vars:
   en vez de os.environ.
 """
 
-import asyncio
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -245,13 +244,11 @@ class TestEnrichProduct:
             mock_genai = MagicMock()
             mock_response = MagicMock()
             mock_response.parsed = sample_enrichment
-            mock_genai.aio.models.generate_content = AsyncMock(
-                return_value=mock_response
-            )
+            mock_genai.models.generate_content.return_value = mock_response
             mock_genai_class.return_value = mock_genai
 
             enricher = ProductEnricher()
-            result = asyncio.run(enricher.enrich_product(sample_row))
+            result = enricher.enrich_product(sample_row)
 
             assert result is not None
             assert result["product_id"] == "RSP-001"
@@ -267,23 +264,21 @@ class TestEnrichProduct:
             patch("enrich.GCP_PROJECT", "test-project"),
             patch("enrich.genai.Client") as mock_genai_class,
             patch("enrich.bigquery.Client"),
-            patch("enrich.asyncio.sleep", new_callable=AsyncMock),
+            patch("enrich.time.sleep"),
         ):
             mock_genai = MagicMock()
             mock_response = MagicMock()
             mock_response.parsed = sample_enrichment
 
-            mock_genai.aio.models.generate_content = AsyncMock(
-                side_effect=[
-                    Exception("Rate limit"),
-                    Exception("Timeout"),
-                    mock_response,
-                ]
-            )
+            mock_genai.models.generate_content.side_effect = [
+                Exception("Rate limit"),
+                Exception("Timeout"),
+                mock_response,
+            ]
             mock_genai_class.return_value = mock_genai
 
             enricher = ProductEnricher()
-            result = asyncio.run(enricher.enrich_product(sample_row))
+            result = enricher.enrich_product(sample_row)
 
             assert result is not None
             assert result["product_id"] == "RSP-001"
@@ -294,16 +289,16 @@ class TestEnrichProduct:
             patch("enrich.GCP_PROJECT", "test-project"),
             patch("enrich.genai.Client") as mock_genai_class,
             patch("enrich.bigquery.Client"),
-            patch("enrich.asyncio.sleep", new_callable=AsyncMock),
+            patch("enrich.time.sleep"),
         ):
             mock_genai = MagicMock()
-            mock_genai.aio.models.generate_content = AsyncMock(
-                side_effect=Exception("Persistent error")
+            mock_genai.models.generate_content.side_effect = Exception(
+                "Persistent error"
             )
             mock_genai_class.return_value = mock_genai
 
             enricher = ProductEnricher()
-            result = asyncio.run(enricher.enrich_product(sample_row))
+            result = enricher.enrich_product(sample_row)
             assert result is None
 
 
@@ -401,7 +396,7 @@ class TestRun:
             patch("enrich.GCP_PROJECT", "test-project"),
             patch("enrich.genai.Client") as mock_genai_class,
             patch("enrich.bigquery.Client") as mock_bq_class,
-            patch("enrich.asyncio.sleep", new_callable=AsyncMock),
+            patch("enrich.time.sleep"),
         ):
             mock_bq = MagicMock()
             mock_bq.query.return_value.to_dataframe.return_value = sample_dataframe
@@ -418,15 +413,13 @@ class TestRun:
 
             mock_genai = MagicMock()
             # 2 éxitos + 3 fallos (3 retries para el tercer producto).
-            mock_genai.aio.models.generate_content = AsyncMock(
-                side_effect=[
-                    success_response,
-                    success_response,
-                    Exception("API Error"),
-                    Exception("API Error"),
-                    Exception("API Error"),
-                ]
-            )
+            mock_genai.models.generate_content.side_effect = [
+                success_response,
+                success_response,
+                Exception("API Error"),
+                Exception("API Error"),
+                Exception("API Error"),
+            ]
             mock_genai_class.return_value = mock_genai
 
             enricher = ProductEnricher()

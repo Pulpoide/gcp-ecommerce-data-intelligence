@@ -5,7 +5,7 @@ Script de Enriquecimiento de Productos con Gemini AI
 Módulo 02 del pipeline de Resparked Data Intelligence.
 
 Lee productos de final_products que aún no fueron enriquecidos,
-los envía a Gemini 1.5 Flash para clasificación automática,
+los envía a Gemini para clasificación automática,
 y escribe los resultados en enriched_products.
 
 El procesamiento es INCREMENTAL: solo enriquece productos que no
@@ -24,7 +24,6 @@ Uso:
   python enrich.py
 """
 
-import asyncio
 import logging
 import os
 import time
@@ -51,14 +50,13 @@ GCP_PROJECT = os.environ.get("GCP_PROJECT", "")
 DATASET_NAME = os.environ.get("DATASET_NAME", "dropshipping")
 REGION = os.environ.get("REGION", "us-central1")
 
-# Modelo y parámetros de concurrencia.
+# Modelo y parámetros.
 # gemini-2.5-flash: versión estable de Flash en Vertex AI.
 MODEL = "gemini-2.5-flash"
-MAX_CONCURRENT = 1
 MAX_RETRIES = 3
 BASE_DELAY_SECONDS = 4  # Backoff exponencial: 4s → 8s → 16s.
-PRODUCT_TIMEOUT_SECONDS = 30  # Timeout por producto (incluye retries).
-BQ_BATCH_SIZE = 10  # Insertar en BQ cada N resultados exitosos.
+RATE_LIMIT_DELAY = 4    # Pausa entre productos para respetar rate limits.
+BQ_BATCH_SIZE = 10      # Insertar en BQ cada N resultados exitosos.
 
 # Categorías válidas para Resparked.
 VALID_CATEGORIES = ["Herramientas", "Insumos", "Accesorios", "Materiales", "Kits"]
@@ -120,10 +118,10 @@ class EnrichmentResult(BaseModel):
 class ProductEnricher:
     """Orquesta el enriquecimiento de productos con Gemini AI.
 
-    Flujo:
+    Flujo sincrónico:
       1. get_pending_products() — Lee productos no enriquecidos de BQ.
-      2. enrich_product()       — Envía cada producto a Gemini (async).
-      3. save_to_bigquery()     — Escribe todos los resultados en un solo batch.
+      2. enrich_product()       — Envía cada producto a Gemini (sync).
+      3. _flush_to_bigquery()   — Escribe batches de BQ_BATCH_SIZE.
       4. run()                  — Orquesta todo el flujo.
     """
 
@@ -142,7 +140,6 @@ class ProductEnricher:
             location=REGION,
         )
         self.bq_client = bigquery.Client(project=GCP_PROJECT)
-        self.semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
     def get_pending_products(self) -> pd.DataFrame:
         """Trae productos de final_products que NO están en enriched_products.
@@ -172,15 +169,12 @@ class ProductEnricher:
         logger.info("Productos pendientes: %d", len(df))
         return df
 
-    async def enrich_product(self, row: dict) -> dict | None:
-        """Enriquece UN producto con Gemini.
+    def enrich_product(self, row: dict) -> dict | None:
+        """Enriquece UN producto con Gemini (sincrónico).
 
-        Usa Semaphore para limitar concurrencia a MAX_CONCURRENT requests.
-        Implementa retry con backoff exponencial dentro de un timeout
-        global de PRODUCT_TIMEOUT_SECONDS por producto.
-
-        Si el timeout se cumple o los 3 intentos fallan, loguea el
-        product_id y retorna None sin interrumpir el batch.
+        Implementa retry con backoff exponencial: 4s → 8s → 16s.
+        Si los 3 intentos fallan, loguea el product_id y retorna None
+        sin interrumpir el batch.
 
         Args:
             row: Dict con product_id, name, description, price, supplier.
@@ -197,67 +191,51 @@ class ProductEnricher:
             f"Proveedor: {row['supplier']}"
         )
 
-        try:
-            async with self.semaphore:
-                async with asyncio.timeout(PRODUCT_TIMEOUT_SECONDS):
-                    for attempt in range(MAX_RETRIES):
-                        try:
-                            response = (
-                                await self.genai_client.aio.models.generate_content(
-                                    model=MODEL,
-                                    contents=prompt,
-                                    config=types.GenerateContentConfig(
-                                        system_instruction=SYSTEM_INSTRUCTION,
-                                        response_mime_type="application/json",
-                                        response_schema=EnrichmentResult,
-                                    ),
-                                )
-                            )
+        for attempt in range(MAX_RETRIES):
+            try:
+                response = self.genai_client.models.generate_content(
+                    model=MODEL,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=SYSTEM_INSTRUCTION,
+                        response_mime_type="application/json",
+                        response_schema=EnrichmentResult,
+                    ),
+                )
 
-                            result: EnrichmentResult = response.parsed
+                result: EnrichmentResult = response.parsed
 
-                            logger.info(
-                                "✅ %s → %s / %s (%.2f)",
-                                product_id,
-                                result.category,
-                                result.subcategory,
-                                result.confidence_score,
-                            )
+                logger.info(
+                    "✅ %s → %s / %s (%.2f)",
+                    product_id,
+                    result.category,
+                    result.subcategory,
+                    result.confidence_score,
+                )
 
-                            return {
-                                "product_id": product_id,
-                                "category": result.category,
-                                "subcategory": result.subcategory,
-                                "tags": result.tags,
-                                "confidence_score": result.confidence_score,
-                                "enriched_at": datetime.now(timezone.utc).isoformat(),
-                            }
+                return {
+                    "product_id": product_id,
+                    "category": result.category,
+                    "subcategory": result.subcategory,
+                    "tags": result.tags,
+                    "confidence_score": result.confidence_score,
+                    "enriched_at": datetime.now(timezone.utc).isoformat(),
+                }
 
-                        except TimeoutError:
-                            raise  # Propagar timeout al bloque externo.
+            except Exception as e:
+                delay = BASE_DELAY_SECONDS * (2**attempt)
+                logger.warning(
+                    "⚠️  %s — intento %d/%d falló: %s. Reintentando en %ds...",
+                    product_id,
+                    attempt + 1,
+                    MAX_RETRIES,
+                    str(e),
+                    delay,
+                )
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(delay)
 
-                        except Exception as e:
-                            delay = BASE_DELAY_SECONDS * (2**attempt)
-                            logger.warning(
-                                "⚠️  %s — intento %d/%d falló: %s. Reintentando en %ds...",
-                                product_id,
-                                attempt + 1,
-                                MAX_RETRIES,
-                                str(e),
-                                delay,
-                            )
-                            if attempt < MAX_RETRIES - 1:
-                                await asyncio.sleep(delay)
-
-        except TimeoutError:
-            logger.error(
-                "⏰ %s — timeout de %ds alcanzado. Saltando.",
-                product_id,
-                PRODUCT_TIMEOUT_SECONDS,
-            )
-            return None
-
-        # Los 3 intentos fallaron sin timeout.
+        # Los 3 intentos fallaron.
         logger.error(
             "❌ %s — falló después de %d intentos. Saltando.",
             product_id,
@@ -295,49 +273,13 @@ class ProductEnricher:
             len(batch),
         )
 
-    async def _enrich_all(self, df: pd.DataFrame) -> tuple[int, int]:
-        """Enriquece productos y guarda en BQ a medida que terminan.
-
-        Usa asyncio.as_completed() en lugar de gather() para procesar
-        resultados a medida que llegan. Cada BQ_BATCH_SIZE resultados
-        exitosos se flushean a BigQuery sin esperar al resto.
-
-        Returns:
-            Tupla (exitosos, fallidos).
-        """
-        tasks = [self.enrich_product(row.to_dict()) for _, row in df.iterrows()]
-
-        buffer: list[dict] = []
-        succeeded = 0
-        failed = 0
-
-        for coro in asyncio.as_completed(tasks):
-            result = await coro
-
-            if result is None:
-                failed += 1
-                continue
-
-            buffer.append(result)
-            succeeded += 1
-
-            # Flush batch cuando el buffer se llena.
-            if len(buffer) >= BQ_BATCH_SIZE:
-                self._flush_to_bigquery(buffer)
-                buffer.clear()
-
-        # Flush del remanente (< BQ_BATCH_SIZE).
-        if buffer:
-            self._flush_to_bigquery(buffer)
-
-        return succeeded, failed
-
     def run(self) -> None:
         """Orquesta el flujo completo de enriquecimiento.
 
+        Loop sincrónico simple:
         1. Consulta productos pendientes en BigQuery.
-        2. Enriquece cada uno con Gemini (async, streaming).
-        3. Guarda en BQ en batches de BQ_BATCH_SIZE a medida que llegan.
+        2. Enriquece cada uno con Gemini (sync, secuencial).
+        3. Guarda en BQ en batches de BQ_BATCH_SIZE.
         4. Imprime resumen final.
         """
         start_time = time.time()
@@ -349,8 +291,31 @@ class ProductEnricher:
             logger.info("🎉 No hay productos pendientes. Todos ya fueron enriquecidos.")
             return
 
-        # 2. Enriquecer y guardar (async, streaming por batches).
-        succeeded, failed = asyncio.run(self._enrich_all(df))
+        # 2. Procesar secuencialmente con rate limiting.
+        buffer: list[dict] = []
+        succeeded = 0
+        failed = 0
+
+        for idx, row in df.iterrows():
+            result = self.enrich_product(row.to_dict())
+
+            if result is not None:
+                buffer.append(result)
+                succeeded += 1
+
+                # Flush batch cuando el buffer se llena.
+                if len(buffer) >= BQ_BATCH_SIZE:
+                    self._flush_to_bigquery(buffer)
+                    buffer.clear()
+            else:
+                failed += 1
+
+            # Rate limit: pausa entre productos.
+            time.sleep(RATE_LIMIT_DELAY)
+
+        # Flush del remanente (< BQ_BATCH_SIZE).
+        if buffer:
+            self._flush_to_bigquery(buffer)
 
         # 3. Resumen final.
         elapsed = time.time() - start_time
