@@ -55,8 +55,8 @@ REGION = os.environ.get("REGION", "us-central1")
 MODEL = "gemini-2.5-flash"
 MAX_RETRIES = 3
 BASE_DELAY_SECONDS = 4  # Backoff exponencial: 4s → 8s → 16s.
-RATE_LIMIT_DELAY = 4    # Pausa entre productos para respetar rate limits.
-BQ_BATCH_SIZE = 10      # Insertar en BQ cada N resultados exitosos.
+RATE_LIMIT_DELAY = 4  # Pausa entre productos para respetar rate limits.
+BQ_BATCH_SIZE = 10  # Insertar en BQ cada N resultados exitosos.
 
 # Categorías válidas para Resparked.
 VALID_CATEGORIES = ["Herramientas", "Insumos", "Accesorios", "Materiales", "Kits"]
@@ -200,6 +200,7 @@ class ProductEnricher:
                         system_instruction=SYSTEM_INSTRUCTION,
                         response_mime_type="application/json",
                         response_schema=EnrichmentResult,
+                        http_options=types.HttpOptions(timeout=25000),
                     ),
                 )
 
