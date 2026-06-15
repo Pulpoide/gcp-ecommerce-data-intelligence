@@ -43,6 +43,13 @@ graph TD
 
 ---
 
+## Demo Completa del Proyecto
+
+[![Mira el video de la arquitectura en acción](https://img.youtube.com/vi/z_6TC3Ao40A/maxresdefault.jpg)](https://www.youtube.com/watch?v=z_6TC3Ao40A)
+
+ 💡 *Haz clic en la imagen superior para ver el recorrido completo por la arquitectura, la validación de datos, el enriquecimiento con Gemini AI y el monitoreo en tiempo real.*
+
+
 ## Tech Stack
 
 | Layer | Technology |
