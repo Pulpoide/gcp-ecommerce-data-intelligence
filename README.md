@@ -341,8 +341,16 @@ export PROJECT_ID=your-project-id
 export DATASET_NAME=dropshipping
 export PROJECT_NUMBER=your-project-number
 
-# 3. Provision all infrastructure (idempotent — safe to re-run)
-bash infra/setup.sh
+# 3. Provision all infrastructure (migrated to Terraform)
+cd infra/terraform
+terraform init && terraform apply
+cd ../..
+
+# Outputs disponibles:
+# - bucket_raw_url
+# - bucket_failed_url
+# - dataset_id
+# - pubsub_topic_name
 
 # 4. Deploy Module 01 — Batch Ingestion
 gcloud functions deploy ingest-products \
