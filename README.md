@@ -57,7 +57,7 @@ graph TD
 | Orchestration | Eventarc (GCS + Pub/Sub triggers) |
 | Visualization | Data Studio (formerly Looker Studio) |
 | Language | Python 3.12 |
-| IaC | gcloud CLI (`infra/setup.sh`) |
+| IaC | Terraform (`hashicorp/google ~> 6.0`) |
 
 ---
 
@@ -66,7 +66,8 @@ graph TD
 ```
 gcp-ecommerce-data-intelligence/
 ├── infra/
-│   └── setup.sh                    # Infrastructure provisioning (idempotent)
+│   ├── terraform/                  # Terraform configuration (APIs, Buckets, Pub/Sub, BigQuery)
+│   └── setup.sh                    # Infrastructure provisioning (legacy/deprecated)
 ├── 01_batch_ingestion/
 │   ├── main.py                     # Cloud Function — CSV validation & BQ load
 │   └── requirements.txt
@@ -318,9 +319,9 @@ idempotent and safe to re-execute.
 - **Row-level vs file-level rejection** — rejecting entire files on 
   partial errors would discard valid data. Row-level validation 
   maximizes throughput while maintaining auditability.
-- **gcloud CLI over Terraform** — for a single-environment portfolio 
-  project, a documented Bash script is more transparent and auditable 
-  than Terraform state management.
+- **Terraform for Infrastructure as Code** — replaced legacy shell scripting 
+  with declarative HCL configs, using a GCS backend for state lock and 
+  collaboration, ensuring reproducibility and environment consistency.
 - **Data Studio over custom dashboard** — native BigQuery connector 
   with zero infrastructure cost. The `v_dashboard_products` view acts 
   as a semantic layer, keeping all join logic out of the 
