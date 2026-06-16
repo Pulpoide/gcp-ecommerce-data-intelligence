@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# DEPRECATED: usar infra/terraform/ en adelante
 # =============================================================================
 # Resparked — GCP Data Intelligence Infrastructure
 # =============================================================================
